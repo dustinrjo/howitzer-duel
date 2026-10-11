@@ -1,0 +1,942 @@
+<title>Howitzer Duel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Saira+Stencil+One&display=swap">
+<style>
+  /* Single deliberate look: white paper, grey line art. */
+  :root {
+    --paper: #ffffff;
+    --ink: #2b2f35;
+    --ink-soft: #6b7179;
+    --rule: #c9cdd2;
+    --hover: #f1f3f5;
+    --p1: #2c64b0;
+    --p2: #c0432b;
+    --display: "Saira Stencil One", Impact, "Arial Narrow", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--paper); color: var(--ink); font-family: var(--mono); }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  #top {
+    position: fixed; left: 0; right: 0; top: 0;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 0;
+    display: grid; grid-template-columns: minmax(0, 236px) 1fr minmax(0, 236px);
+    gap: 12px; align-items: start; pointer-events: none;
+  }
+  #top > * { pointer-events: auto; }
+
+  .card { --pc: var(--p1); background: rgba(255,255,255,.92); border: 1.5px solid var(--ink); border-radius: 3px; font-size: 12px; transition: opacity .25s, border-color .25s; }
+  .card[data-p="2"] { --pc: var(--p2); }
+  .card.idle { opacity: .5; }
+  .card.active { border-color: var(--pc); }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1.5px solid var(--ink); font-family: var(--display); font-size: 19px; letter-spacing: .04em; color: var(--pc); }
+  .card.active .card-head { background: var(--pc); border-color: var(--pc); color: #fff; }
+  .score { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; }
+  .card-body { padding: 8px 10px 10px; display: grid; gap: 8px; }
+  .ctl { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 6px; }
+  .ctl .lab { font-size: 10.5px; letter-spacing: .14em; color: var(--ink-soft); }
+  .ctl output { min-width: 5.4ch; text-align: right; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .step { width: 26px; height: 26px; padding: 0; border: 1.5px solid var(--ink); border-radius: 3px; background: var(--paper); color: var(--ink); font: 600 15px/1 var(--mono); cursor: pointer; }
+  .step:hover { background: var(--hover); }
+  .step:focus-visible, .fire:focus-visible, .hint:focus-visible, #again:focus-visible { outline: 2px solid var(--pc, var(--ink)); outline-offset: 2px; }
+  .card:not(.active) .step { cursor: default; }
+  .sub { margin-top: -5px; font-size: 10.5px; color: var(--ink-soft); letter-spacing: .05em; font-variant-numeric: tabular-nums; }
+  .meter { height: 6px; border: 1.5px solid var(--ink); border-radius: 2px; position: relative; overflow: hidden; }
+  .meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--pc); }
+  .spot { border-top: 1px dashed var(--rule); padding-top: 6px; font-size: 11px; line-height: 1.45; letter-spacing: .03em; font-variant-numeric: tabular-nums; }
+  .spot b { display: block; font-size: 10px; font-weight: 500; letter-spacing: .14em; color: var(--ink-soft); }
+  .fire { border: 0; border-radius: 3px; padding: 6px; background: var(--pc); color: #fff; font: 19px/1.1 var(--display); letter-spacing: .08em; cursor: pointer; }
+  .card:not(.active) .fire { visibility: hidden; }
+
+  #banner { --tc: var(--p1); text-align: center; padding-top: 2px; }
+  #banner .who { font-family: var(--display); font-size: clamp(26px, 4vw, 44px); line-height: 1; color: var(--tc); text-wrap: balance; }
+  #banner .what { margin-top: 6px; font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-soft); }
+
+  #hints {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 8px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 20px;
+    font-size: 11.5px; color: var(--ink-soft); letter-spacing: .03em;
+  }
+  .hint { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; }
+  button.hint { cursor: pointer; }
+  button.hint:hover { color: var(--ink); }
+  kbd { display: inline-block; min-width: 1.5em; padding: 1px 5px; border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 3px; background: var(--paper); color: var(--ink); font: 600 11px/1.5 var(--mono); text-align: center; }
+
+  #overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 0 16px; pointer-events: none; }
+  #overlay .box { --wc: var(--p1); pointer-events: auto; background: rgba(255,255,255,.95); border: 2px solid var(--wc); border-radius: 3px; padding: 18px 26px 20px; text-align: center; max-width: 420px; box-sizing: border-box; }
+  #overlay .big { font-family: var(--display); font-size: clamp(34px, 7vw, 58px); line-height: 1; color: var(--wc); }
+  #overlay p { margin: 10px 0 14px; font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
+  #again { border: 1.5px solid var(--ink); border-radius: 3px; background: var(--paper); color: var(--ink); padding: 6px 12px; font: 600 12px var(--mono); letter-spacing: .06em; cursor: pointer; }
+  #again:hover { background: var(--hover); }
+
+  @media (max-width: 760px) {
+    #top { grid-template-columns: 1fr 1fr; gap: 8px; }
+    #banner { grid-column: 1 / -1; order: -1; }
+    .card-head { font-size: 16px; }
+    .ctl output { font-size: 14px; }
+    .spot { font-size: 10.5px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+</style>
+
+<canvas id="view"></canvas>
+
+<div id="top">
+  <section class="card" data-p="1" id="card1">
+    <div class="card-head"><span>Player 1</span><span class="score">0 WINS</span></div>
+    <div class="card-body">
+      <div class="ctl"><span class="lab">ELEV</span><button class="step" data-k="angle" data-d="-1" aria-label="Lower elevation">&minus;</button><output class="ang">45.0&deg;</output><button class="step" data-k="angle" data-d="1" aria-label="Raise elevation">+</button></div>
+      <div class="sub mils">800 mils</div>
+      <div class="ctl"><span class="lab">CHARGE</span><button class="step" data-k="charge" data-d="-1" aria-label="Less charge">&minus;</button><output class="chg">25.0</output><button class="step" data-k="charge" data-d="1" aria-label="More charge">+</button></div>
+      <div class="meter"><i></i></div>
+      <div class="sub mv">MV 22.5 m/s</div>
+      <div class="spot"><b>LAST ROUND</b><span class="spot-t">No rounds fired</span></div>
+      <button class="fire">FIRE</button>
+    </div>
+  </section>
+
+  <div id="banner"><div class="who">Player 1</div><div class="what">Set elevation and charge, then fire</div></div>
+
+  <section class="card" data-p="2" id="card2">
+    <div class="card-head"><span>Player 2</span><span class="score">0 WINS</span></div>
+    <div class="card-body">
+      <div class="ctl"><span class="lab">ELEV</span><button class="step" data-k="angle" data-d="-1" aria-label="Lower elevation">&minus;</button><output class="ang">45.0&deg;</output><button class="step" data-k="angle" data-d="1" aria-label="Raise elevation">+</button></div>
+      <div class="sub mils">800 mils</div>
+      <div class="ctl"><span class="lab">CHARGE</span><button class="step" data-k="charge" data-d="-1" aria-label="Less charge">&minus;</button><output class="chg">25.0</output><button class="step" data-k="charge" data-d="1" aria-label="More charge">+</button></div>
+      <div class="meter"><i></i></div>
+      <div class="sub mv">MV 22.5 m/s</div>
+      <div class="spot"><b>LAST ROUND</b><span class="spot-t">No rounds fired</span></div>
+      <button class="fire">FIRE</button>
+    </div>
+  </section>
+</div>
+
+<div id="hints">
+  <span class="hint"><kbd>&uarr;</kbd><kbd>&darr;</kbd> Elevation &plusmn;1&deg;</span>
+  <span class="hint"><kbd>&larr;</kbd><kbd>&rarr;</kbd> Charge &plusmn;1</span>
+  <span class="hint"><kbd>Shift</kbd> Fine steps of 0.1</span>
+  <button class="hint" id="hintFire"><kbd>Space</kbd> Fire</button>
+  <button class="hint" id="hintNew"><kbd>R</kbd> New match</button>
+  <button class="hint" id="hintMute"><kbd>M</kbd> <span id="muteLabel">Sound on</span></button>
+</div>
+
+<div id="overlay" hidden>
+  <div class="box">
+    <div class="big" id="winText">Player 1 wins</div>
+    <p id="winDetail"></p>
+    <button id="again"><kbd>R</kbd> New match</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+<script>
+(() => {
+  const M = Matter;
+
+  // ---- World units: 20 physics units per metre, y points down, ground at y = 0.
+  const SCALE = 20;
+  const W = 76 * SCALE;               // battlefield is 76 m wide
+  const G = 9.81 * SCALE;             // gravity, units/s^2
+  const K_DRAG = 0.0005 / SCALE;      // quadratic drag for a ~10 kg, 150 mm round
+  const MV_PER_CHARGE = 0.9;          // muzzle velocity (m/s) per charge increment
+  const STEP = 1 / 60, SUB = 4;
+  const BW = 48, BH = 24;             // blocks are 2.4 m x 1.2 m
+  const PW = 72, PH = 36;             // gun crew footprint 3.6 m x 1.8 m
+  const BARREL = 34;
+  // Ricochet: a round striking the ground at more than 60 deg (0 = grazing, 90 = head-on)
+  // buries and detonates. Flatter strikes skip off, losing more energy the steeper they hit.
+  const RICOCHET_MAX = 60 * Math.PI / 180;
+  const ROLL_DECEL = 1.2 * SCALE, REST_SPEED = 0.5 * SCALE, FUSE = 10;
+  const C = {
+    paper: '#ffffff', ink: '#2b2f35', brick: '#5c626b', far: '#dcdfe3', near: '#c3c7cc',
+    cloud: '#caced3', ground: '#7d838b', hatch: '#d3d6da', smoke: '#9aa0a7', flash: '#e8a33a',
+    p: ['#2c64b0', '#c0432b'],
+  };
+
+  const canvas = document.getElementById('view');
+  const ctx = canvas.getContext('2d');
+  const topEl = document.getElementById('top');
+  const hintsEl = document.getElementById('hints');
+  const cards = [document.getElementById('card1'), document.getElementById('card2')];
+  const banner = document.getElementById('banner');
+  const overlay = document.getElementById('overlay');
+
+  let dpr = 1, cw = 0, ch = 0, s = 1, ox = 0, gy = 0;
+  let hill = null; // {cx, r, h} when a hill stands between the guns
+  let bricks = [], players = [], shell = null, turn = 0, state = 'aim', timer = 0, winner = -1;
+  let scores = [0, 0], scenery = null, matchNo = 0, clock = 0;
+  let smoke = [], debris = [], sparks = [], rings = [], flashes = [];
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const randInt = (a, b) => Math.floor(rand(a, b + 1));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  const engine = M.Engine.create({ enableSleeping: true, positionIterations: 10, velocityIterations: 8 });
+  engine.gravity.y = 1;
+  engine.gravity.scale = G / 1e6; // Matter measures gravity in units/ms^2
+
+  // ---------------------------------------------------------------- sound
+  let actx = null, muted = false;
+  function boom(dur, cutoff, gain) {
+    if (muted) return;
+    try {
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      const n = Math.floor(actx.sampleRate * dur);
+      const buf = actx.createBuffer(1, n, actx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.6);
+      const src = actx.createBufferSource(); src.buffer = buf;
+      const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff;
+      const g = actx.createGain(); g.gain.value = gain;
+      src.connect(lp).connect(g).connect(actx.destination);
+      src.start();
+    } catch (e) { /* audio is optional */ }
+  }
+
+  // ---------------------------------------------------------------- match setup
+  function addBrick(x, y, w, h, side) {
+    const b = M.Bodies.rectangle(x, y, w, h, {
+      friction: 0.7, frictionStatic: 1.2, restitution: 0.02, density: 0.0015, slop: 0.02,
+      chamfer: { radius: 1 }, label: 'brick',
+    });
+    b.side = side;
+    bricks.push(b);
+    M.Composite.add(engine.world, b);
+  }
+
+  function buildSide(i) {
+    const cols = Math.random() < 0.3 ? 3 : 2;
+    const rows = randInt(3, 10);
+    const xm = rand(6, 22) * SCALE;
+    const cx = i === 0 ? xm : W - xm;
+    const left = cx - cols * BW / 2;
+    for (let r = 0; r < rows; r++) {
+      const y = -(r + 0.5) * BH;
+      const offset = (rows - 1 - r) % 2 === 1; // running bond, top course always whole blocks
+      const pieces = offset ? [BW / 2, ...Array(cols - 1).fill(BW), BW / 2] : Array(cols).fill(BW);
+      let x = left;
+      for (const w of pieces) { addBrick(x + w / 2, y, w, BH, i); x += w; }
+    }
+    const body = M.Bodies.rectangle(cx, -rows * BH - PH / 2, PW, PH, {
+      friction: 0.9, frictionStatic: 1.5, restitution: 0, density: 0.003, label: 'player',
+    });
+    M.Body.setInertia(body, Infinity); // the crew slides and falls but stays upright
+    M.Composite.add(engine.world, body);
+    const prev = players[i];
+    return {
+      i, body, dir: i === 0 ? 1 : -1, color: C.p[i],
+      angle: 45, charge: 25, trail: null, impact: null, spot: 'No rounds fired',
+      dead: false, recoil: 0, _prev: prev,
+    };
+  }
+
+  function makeRange(hmin, hmax) {
+    const pts = [];
+    let x = -W * 0.7;
+    pts.push({ x, y: 0 });
+    while (x < W * 1.7) {
+      const pw = rand(8, 20) * SCALE;
+      x += pw / 2; pts.push({ x, y: -rand(hmin, hmax) * SCALE, peak: true });
+      x += pw / 2; pts.push({ x, y: -rand(hmin * 0.25, hmin * 0.7) * SCALE });
+    }
+    const out = [pts[0]];
+    for (let k = 1; k < pts.length; k++) {
+      const a = pts[k - 1], b = pts[k];
+      for (const t of [0.33, 0.66]) out.push({ x: a.x + (b.x - a.x) * t + rand(-0.4, 0.4) * SCALE, y: a.y + (b.y - a.y) * t + rand(-0.8, 0.8) * SCALE });
+      out.push(b);
+    }
+    const ridges = out.filter(p => p.peak).map(p => {
+      const h = -p.y;
+      return [p, { x: p.x + rand(-0.15, 0.25) * h, y: p.y + h * rand(0.25, 0.45) }];
+    });
+    return { pts: out, ridges };
+  }
+
+  function makeCloud(x) {
+    const w = rand(7, 16) * SCALE, n = randInt(3, 5);
+    const bumps = [];
+    for (let k = 0; k < n; k++) {
+      const mid = 1 - Math.abs((k + 0.5) / n - 0.5) * 1.2;
+      bumps.push({ cx: w * (k + 0.5) / n, r: (w / n) * rand(0.55, 0.8) * (0.7 + mid * 0.5) });
+    }
+    const minX = Math.min(...bumps.map(b => b.cx - b.r)), maxX = Math.max(...bumps.map(b => b.cx + b.r));
+    const outline = [];
+    for (let k = 0; k <= 48; k++) {
+      const px = minX + (maxX - minX) * k / 48;
+      let top = 0;
+      for (const b of bumps) { const dx = px - b.cx; if (Math.abs(dx) <= b.r) top = Math.min(top, -Math.sqrt(b.r * b.r - dx * dx)); }
+      outline.push({ x: px, y: top });
+    }
+    return { x, w: maxX - minX, outline, frac: rand(0.5, 0.82), v: rand(0.25, 0.7) * SCALE };
+  }
+
+  function makeScenery() {
+    const tufts = [];
+    for (let x = -W * 0.6; x < W * 1.6; x += rand(2, 7) * SCALE) tufts.push(x);
+    return {
+      far: makeRange(8, 16), near: makeRange(3, 7),
+      clouds: Array.from({ length: 7 }, () => makeCloud(rand(-W * 0.4, W * 1.3))),
+      tufts,
+    };
+  }
+
+
+  // Ground height at x: flat field, raised where the hill stands.
+  function groundAt(x) {
+    if (!hill) return 0;
+    const u = (x - hill.cx) / hill.r;
+    return Math.abs(u) < 1 ? -hill.h * (1 + Math.cos(Math.PI * u)) / 2 : 0;
+  }
+
+  // 75% of matches put something between the guns: a brick tower that can be
+  // blasted through, or a solid hill that has to be cleared with a high arc.
+  function buildObstacle() {
+    hill = null;
+    const roll = Math.random();
+    const cx = W / 2 + rand(-4, 4) * SCALE;
+    if (roll < 0.40) {
+      const cols = randInt(2, 3), rows = randInt(5, 12);
+      const left = cx - cols * BW / 2;
+      for (let r = 0; r < rows; r++) {
+        const y = -(r + 0.5) * BH, offset = r % 2 === 1;
+        const pieces = offset ? [BW / 2, ...Array(cols - 1).fill(BW), BW / 2] : Array(cols).fill(BW);
+        let x = left;
+        for (const w of pieces) { addBrick(x + w / 2, y, w, BH, 2); x += w; }
+      }
+    } else if (roll < 0.75) {
+      hill = { cx, r: rand(10, 14) * SCALE, h: rand(5, 10) * SCALE };
+      // Bell-shaped mound: gentle at the foot and crest, steepest halfway up. It isn't
+      // convex, so rubble collides with it through a row of thin convex slices.
+      const N = 32;
+      for (let k = 0; k < N; k++) {
+        const xa = hill.cx - hill.r + 2 * hill.r * k / N, xb = xa + 2 * hill.r / N;
+        const pts = [{ x: xa, y: groundAt(xa) }, { x: xb, y: groundAt(xb) }, { x: xb, y: 10 }, { x: xa, y: 10 }];
+        const slice = M.Bodies.fromVertices(0, 0, [pts], { isStatic: true, friction: 1, label: 'hill' });
+        M.Body.setPosition(slice, M.Vertices.centre(pts));
+        M.Composite.add(engine.world, slice);
+      }
+      hill.tufts = Array.from({ length: 5 }, () => hill.cx + rand(-0.8, 0.8) * hill.r);
+      hill.strata = Array.from({ length: 4 }, () => {
+        const x = hill.cx + rand(-0.6, 0.6) * hill.r, top = groundAt(x);
+        return { x, y: top * rand(0.2, 0.7), len: rand(1.5, 3.5) * SCALE };
+      });
+    }
+  }
+
+  function newMatch() {
+    M.Composite.clear(engine.world, false, true);
+    M.Engine.clear(engine);
+    M.Composite.add(engine.world, [
+      M.Bodies.rectangle(W / 2, 400, W * 4, 800, { isStatic: true, friction: 1, label: 'ground' }),
+      M.Bodies.rectangle(-3 * SCALE - 20, -2000, 40, 4000, { isStatic: true }),
+      M.Bodies.rectangle(W + 3 * SCALE + 20, -2000, 40, 4000, { isStatic: true }),
+    ]);
+    bricks = []; smoke = []; debris = []; sparks = []; rings = []; flashes = [];
+    shell = null;
+    players = [0, 1].map(buildSide);
+    buildObstacle();
+    for (let k = 0; k < 90; k++) M.Engine.update(engine, 1000 / 60); // let the towers settle
+    scenery = makeScenery();
+    turn = matchNo % 2; // alternate who opens
+    matchNo++;
+    state = 'aim'; timer = 0; winner = -1;
+    overlay.hidden = true;
+    updateHUD();
+  }
+
+  // ---------------------------------------------------------------- gun geometry
+  function gun(p) {
+    const b = p.body.position, a = p.angle * Math.PI / 180;
+    const pivot = { x: b.x + p.dir * 6, y: b.y + PH / 2 - 17 };
+    const d = { x: p.dir * Math.cos(a), y: -Math.sin(a) };
+    return { pivot, d, muzzle: { x: pivot.x + d.x * BARREL, y: pivot.y + d.y * BARREL } };
+  }
+
+  function inBox(p, x, y) {
+    const b = p.body.bounds, m = 4;
+    return x > b.min.x - m && x < b.max.x + m && y > b.min.y - m && y < b.max.y + m;
+  }
+
+  // ---------------------------------------------------------------- actions
+  function adjust(key, delta) {
+    if (state !== 'aim') return;
+    const p = players[turn];
+    const max = key === 'angle' ? 90 : 50;
+    p[key] = Math.round(clamp(p[key] + delta, 0, max) * 10) / 10;
+    updateHUD();
+  }
+
+  function fire() {
+    if (state !== 'aim') return;
+    const p = players[turn];
+    const g = gun(p);
+    const v = p.charge * MV_PER_CHARGE * SCALE;
+    shell = { x: g.muzzle.x, y: g.muzzle.y, vx: g.d.x * v, vy: g.d.y * v, t: 0, n: 0, bounces: 0, rest: 0, contact: false, owner: turn, trail: [{ x: g.muzzle.x, y: g.muzzle.y }] };
+    p.trail = shell.trail;
+    p.fired = { angle: p.angle, charge: p.charge };
+    p.recoil = 1;
+    muzzleBlast(g.muzzle, g.d, g.pivot, p.charge / 50);
+    boom(0.7, 1400, 0.35 + p.charge / 50 * 0.4);
+    state = 'fly'; timer = 0;
+    updateHUD();
+  }
+
+  function muzzleBlast(m, d, pivot, strength) {
+    const base = Math.atan2(d.y, d.x);
+    const count = 14 + Math.round(strength * 20);
+    for (let k = 0; k < count; k++) {
+      const ang = base + rand(-0.4, 0.4);
+      const sp = rand(1, 3 + strength * 11) * SCALE;
+      const life = rand(2.2, 4.5);
+      smoke.push({ x: m.x, y: m.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: rand(2.5, 6), gr: rand(12, 30), life, max: life });
+    }
+    for (let k = 0; k < 7; k++) { // breech and ground blow-back
+      const life = rand(1.5, 3);
+      smoke.push({ x: pivot.x + rand(-10, 10), y: pivot.y + rand(0, 14), vx: -d.x * rand(0.5, 2.5) * SCALE, vy: rand(-1, 0) * SCALE, r: rand(2, 4), gr: rand(8, 16), life, max: life });
+    }
+    flashes.push({ x: m.x, y: m.y, a: base, life: 0.09 });
+  }
+
+  function spotReport(owner, x, brick, note = '') {
+    const target = players[1 - owner.i];
+    const dx = (x - target.body.position.x) * owner.dir / SCALE;
+    const where = brick
+      ? (brick.side === target.i ? 'Struck enemy tower' : brick.side === 2 ? 'Struck center tower' : 'Struck own tower')
+      : (hill && x > hill.cx - hill.r && x < hill.cx + hill.r ? 'Burst on the hill' : 'Ground burst');
+    const range = Math.abs(dx) < 0.5 ? 'on line' : `${dx > 0 ? 'OVER' : 'SHORT'} ${Math.abs(dx).toFixed(1)} m`;
+    return `${where}${note}, ${range}`;
+  }
+
+  function settingsLine(p) {
+    return p.fired ? `${p.fired.angle.toFixed(1)}° / charge ${p.fired.charge.toFixed(1)}: ` : '';
+  }
+
+  function impact(x, y, brick) {
+    const sh = shell; shell = null;
+    const owner = players[sh.owner];
+    sh.trail.push({ x, y });
+    owner.impact = { x, y };
+    const note = sh.bounces ? ` after ${sh.bounces} bounce${sh.bounces > 1 ? 's' : ''}` : '';
+    owner.spot = settingsLine(owner) + spotReport(owner, x, brick, note);
+    explode(x, y, 1, sh.vx, sh.vy, brick);
+    boom(1.0, 650, 0.55);
+    state = 'resolve'; timer = 0;
+    updateHUD();
+  }
+
+  function lost() {
+    const sh = shell; shell = null;
+    const owner = players[sh.owner];
+    owner.impact = null;
+    owner.spot = settingsLine(owner) + 'Round left the map, far OVER';
+    state = 'resolve'; timer = 0;
+    updateHUD();
+  }
+
+  function directHit(p) {
+    const sh = shell; shell = null;
+    const owner = players[sh.owner];
+    sh.trail.push({ x: sh.x, y: sh.y });
+    owner.impact = { x: sh.x, y: sh.y };
+    const self = p.i === sh.owner;
+    winner = self ? 1 - p.i : sh.owner;
+    scores[winner]++;
+    owner.spot = settingsLine(owner) + (self ? 'Round fell on own position' : 'DIRECT HIT');
+    p.dead = true;
+    explode(sh.x, sh.y, 1.6, sh.vx, sh.vy, null);
+    M.Body.setVelocity(p.body, { x: sh.vx / SCALE * 0.15, y: -5 * SCALE / 60 });
+    const w = players[winner];
+    document.getElementById('winText').textContent = `Player ${winner + 1} wins`;
+    document.getElementById('winDetail').textContent = self
+      ? `Player ${p.i + 1} dropped a round on their own gun. Match score ${scores[0]} to ${scores[1]}.`
+      : `Direct hit at ${(Math.abs(p.body.position.x - w.body.position.x) / SCALE).toFixed(1)} m with ${w.fired.angle.toFixed(1)}° and charge ${w.fired.charge.toFixed(1)}. Match score ${scores[0]} to ${scores[1]}.`;
+    overlay.querySelector('.box').style.setProperty('--wc', C.p[winner]);
+    boom(1.6, 480, 0.85);
+    state = 'boom'; timer = 0;
+    updateHUD();
+  }
+
+  function explode(x, y, power, vx, vy, hitBrick) {
+    const R = 3.2 * SCALE * power, KILL = 1.1 * SCALE * power;
+    const sp = Math.hypot(vx, vy) || 1, ux = vx / sp, uy = vy / sp;
+    const removed = bricks.filter(b => b === hitBrick || Math.hypot(b.position.x - x, b.position.y - y) < KILL);
+    if (removed.length) {
+      M.Composite.remove(engine.world, removed);
+      bricks = bricks.filter(b => !removed.includes(b));
+      removed.forEach(shatter);
+    }
+    const bodies = [...bricks, ...players.map(p => p.body)];
+    for (const b of bodies) {
+      M.Sleeping.set(b, false); // anything resting on a removed block must be free to fall
+      const dx = b.position.x - x, dy = b.position.y - y, d = Math.hypot(dx, dy);
+      if (d > R) continue;
+      const f = (1 - d / R) * power;
+      const nx = dx / (d || 1), ny = dy / (d || 1);
+      const dv = 9 * f * (b.label === 'player' ? 0.45 : 1) * SCALE / 60;
+      M.Body.setVelocity(b, { x: b.velocity.x + (nx + ux * 0.5) * dv, y: b.velocity.y + (ny + uy * 0.5 - 0.3) * dv });
+      if (b.label !== 'player') M.Body.setAngularVelocity(b, b.angularVelocity + rand(-0.12, 0.12) * f);
+    }
+    rings.push({ x, y, r: 4, max: R * 0.9, life: 0.4, t: 0 });
+    for (let k = 0; k < 16 * power; k++) {
+      const a = rand(0, Math.PI * 2), v = rand(8, 22) * SCALE;
+      sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 4 * SCALE, life: rand(0.2, 0.5) });
+    }
+    for (let k = 0; k < 16 * power; k++) {
+      const a = rand(-Math.PI, 0), v = rand(1, 5) * SCALE;
+      const life = rand(1.8, 3.5);
+      smoke.push({ x: x + rand(-8, 8), y: y + rand(-8, 4), vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: rand(3, 7), gr: rand(14, 28), life, max: life });
+    }
+    const gnd = groundAt(x);
+    if (y > gnd - 2) for (let k = 0; k < 8; k++) debris.push(chunk(x, gnd - 2, rand(3, 7), rand(3, 6)));
+  }
+
+  function chunk(x, y, w, h) {
+    const a = rand(-Math.PI * 0.9, -Math.PI * 0.1), v = rand(4, 13) * SCALE;
+    return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, w, h, rot: rand(0, 6), vr: rand(-10, 10), life: rand(1.5, 2.6), bounced: 0 };
+  }
+
+  function shatter(b) {
+    const w = b.bounds.max.x - b.bounds.min.x, h = b.bounds.max.y - b.bounds.min.y;
+    for (let k = 0; k < 6; k++) debris.push(chunk(b.position.x + rand(-w / 3, w / 3), b.position.y + rand(-h / 3, h / 3), w * rand(0.2, 0.4), h * rand(0.3, 0.5)));
+  }
+
+  // ---------------------------------------------------------------- simulation
+  function slopeAt(x) {
+    if (!hill) return 0;
+    const u = (x - hill.cx) / hill.r;
+    return Math.abs(u) < 1 ? hill.h * Math.PI * Math.sin(Math.PI * u) / (2 * hill.r) : 0;
+  }
+
+  // Shell touching the ground or hill: bury, ricochet, or roll. Returns true once it detonates.
+  function terrainContact(sh, dt) {
+    const gnd = groundAt(sh.x), k = slopeAt(sh.x), nl = Math.hypot(k, 1);
+    const nx = k / nl, ny = -1 / nl;        // outward surface normal (y points down)
+    const tx = -ny, ty = nx;                // surface tangent
+    sh.y = gnd;
+    const vn = sh.vx * nx + sh.vy * ny;     // negative while driving into the surface
+    let vt = sh.vx * tx + sh.vy * ty;
+    const speed = Math.hypot(sh.vx, sh.vy);
+    let vOut = Math.max(0, vn);
+    // A round already rolling just follows the surface, even where the slope changes sharply.
+    if (!sh.contact && vn < -1.5 * SCALE) {
+      const strike = Math.asin(Math.min(1, -vn / speed));
+      if (strike > RICOCHET_MAX && speed > 4 * SCALE) { impact(sh.x, gnd, null); return true; }
+      const steep = strike / RICOCHET_MAX;
+      vOut = -vn * (0.55 - 0.35 * steep);
+      vt *= 0.85 - 0.25 * steep;
+      if (!sh.bounces) sh.firstBounce = sh.t;
+      sh.bounces++;
+      bounceFx(sh.x, gnd, speed, nx, ny);
+      if (vOut < 1 * SCALE) vOut = 0;
+    }
+    if (vOut === 0) {
+      const dec = ROLL_DECEL * dt;
+      vt = Math.abs(vt) <= dec ? 0 : vt - Math.sign(vt) * dec;
+    }
+    sh.contact = vOut === 0;
+    sh.vx = tx * vt + nx * vOut;
+    sh.vy = ty * vt + ny * vOut;
+    if (sh.contact && Math.abs(vt) < REST_SPEED) {
+      sh.rest += dt;
+      if (sh.rest > 0.3) { impact(sh.x, gnd, null); return true; }
+    } else sh.rest = 0;
+    return false;
+  }
+
+  function bounceFx(x, y, speed, nx, ny) {
+    const s01 = Math.min(1, speed / (25 * SCALE));
+    for (let k = 0; k < 3 + s01 * 6; k++) {
+      const life = rand(1, 2);
+      smoke.push({ x: x + rand(-6, 6), y, vx: nx * rand(1, 3) * SCALE + rand(-1, 1) * SCALE, vy: ny * rand(1, 3) * SCALE, r: rand(2, 4), gr: rand(6, 14), life, max: life });
+    }
+    for (let k = 0; k < 2 + s01 * 3; k++) debris.push(chunk(x, y - 2, rand(2, 4), rand(2, 3)));
+    boom(0.18, 260, 0.2 + s01 * 0.3);
+  }
+
+  function stepShell(dt) {
+    const sh = shell;
+    const sp = Math.hypot(sh.vx, sh.vy);
+    sh.vx += -K_DRAG * sp * sh.vx * dt;
+    sh.vy += (G - K_DRAG * sp * sh.vy) * dt;
+    sh.x += sh.vx * dt; sh.y += sh.vy * dt; sh.t += dt;
+    if (++sh.n % 3 === 0) sh.trail.push({ x: sh.x, y: sh.y });
+    for (const p of players) {
+      if (p.dead || (p.i === sh.owner && sh.t < 0.6)) continue;
+      if (inBox(p, sh.x, sh.y)) { directHit(p); return true; }
+    }
+    const hit = M.Query.point(bricks, { x: sh.x, y: sh.y });
+    if (hit.length) { impact(sh.x, sh.y, hit[0]); return true; }
+    if (sh.y >= groundAt(sh.x)) { if (terrainContact(sh, dt)) return true; }
+    else sh.contact = false;
+    if (sh.bounces && sh.t - sh.firstBounce > FUSE) { impact(sh.x, sh.y, null); return true; }
+    if (sh.x < -12 * SCALE || sh.x > W + 12 * SCALE) { lost(); return true; }
+    return false;
+  }
+
+  function settled() {
+    return [...bricks, ...players.map(p => p.body)].every(b => b.isSleeping || b.speed < 0.12);
+  }
+
+  function step() {
+    if (shell) for (let k = 0; k < SUB && shell; k++) stepShell(STEP / SUB);
+    M.Engine.update(engine, 1000 / 60);
+    timer += STEP;
+    for (const p of players) {
+      p.recoil = Math.max(0, p.recoil - STEP * 2.5);
+      if (p.dead && Math.random() < 0.12) {
+        const life = rand(2, 3.5);
+        smoke.push({ x: p.body.position.x + rand(-20, 20), y: p.body.position.y, vx: rand(-4, 4), vy: -rand(8, 20), r: rand(2, 4), gr: rand(6, 12), life, max: life });
+      }
+    }
+    if (state === 'resolve' && ((timer > 1.4 && settled()) || timer > 6)) {
+      turn = 1 - turn; state = 'aim'; timer = 0;
+      updateHUD();
+    }
+    if (state === 'boom' && timer > 1.6) { state = 'over'; overlay.hidden = false; updateHUD(); }
+  }
+
+  function updateParticles(dt) {
+    for (const q of smoke) {
+      const damp = Math.exp(-2.4 * dt);
+      q.vx = q.vx * damp + 5 * dt; q.vy = q.vy * damp - 14 * dt;
+      q.x += q.vx * dt; q.y += q.vy * dt;
+      q.r += q.gr * dt * (q.life / q.max);
+      q.life -= dt;
+    }
+    for (const q of debris) {
+      q.vy += G * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.rot += q.vr * dt; q.life -= dt;
+      const gnd = groundAt(q.x);
+      if (q.y > gnd) { q.y = gnd; q.vy *= -0.3; q.vx *= 0.55; q.vr *= 0.5; }
+    }
+    for (const q of sparks) { q.vy += G * 0.5 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }
+    for (const q of rings) { q.t += dt; q.life -= dt; }
+    for (const q of flashes) q.life -= dt;
+    smoke = smoke.filter(q => q.life > 0);
+    debris = debris.filter(q => q.life > 0);
+    sparks = sparks.filter(q => q.life > 0);
+    rings = rings.filter(q => q.life > 0);
+    flashes = flashes.filter(q => q.life > 0);
+  }
+
+  // ---------------------------------------------------------------- drawing
+  const lw = px => { ctx.lineWidth = px / s; };
+  const line = (x1, y1, x2, y2) => { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+  const w2s = (x, y) => ({ x: ox + x * s, y: gy + y * s });
+
+  function drawRange(r, color) {
+    ctx.beginPath();
+    ctx.moveTo(r.pts[0].x, 0);
+    for (const p of r.pts) ctx.lineTo(p.x, p.y);
+    ctx.lineTo(r.pts[r.pts.length - 1].x, 0);
+    ctx.fillStyle = C.paper; ctx.fill();
+    ctx.beginPath();
+    r.pts.forEach((p, k) => k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.strokeStyle = color; lw(1.3); ctx.stroke();
+    lw(1);
+    for (const [a, b] of r.ridges) line(a.x, a.y, b.x, b.y);
+  }
+
+  function drawCloud(c, skyH) {
+    const y = -skyH * c.frac;
+    ctx.beginPath();
+    c.outline.forEach((p, k) => k ? ctx.lineTo(c.x + p.x, y + p.y) : ctx.moveTo(c.x + p.x, y + p.y));
+    ctx.closePath();
+    ctx.fillStyle = C.paper; ctx.fill();
+    ctx.strokeStyle = C.cloud; lw(1.3); ctx.stroke();
+  }
+
+  function drawGround(x0, x1) {
+    ctx.strokeStyle = C.hatch; lw(1);
+    const step = 1.4 * SCALE;
+    for (let x = Math.floor(x0 / step) * step; x < x1 + step; x += step) line(x, 0, x - 0.7 * SCALE, 0.7 * SCALE);
+    ctx.strokeStyle = C.ground; lw(1.2);
+    for (const x of scenery.tufts) {
+      if (x < x0 - 20 || x > x1 + 20) continue;
+      line(x, 0, x - 3, -6); line(x + 3, 0, x + 4, -8); line(x + 6, 0, x + 10, -5);
+    }
+    lw(1.8); line(x0, 0, x1, 0);
+  }
+
+  function drawHill() {
+    if (!hill) return;
+    ctx.beginPath();
+    ctx.moveTo(hill.cx - hill.r * 1.02, 0.5);
+    for (let k = 0; k <= 48; k++) { const x = hill.cx - hill.r + 2 * hill.r * k / 48; ctx.lineTo(x, groundAt(x)); }
+    ctx.lineTo(hill.cx + hill.r * 1.02, 0.5);
+    ctx.fillStyle = C.paper; ctx.fill();
+    ctx.strokeStyle = C.ground; lw(1.8); ctx.stroke();
+    ctx.strokeStyle = C.hatch; lw(1);
+    for (const q of hill.strata) line(q.x - q.len / 2, q.y, q.x + q.len / 2, q.y - q.len * 0.08);
+    ctx.strokeStyle = C.ground; lw(1.2);
+    for (const x of hill.tufts) { const y = groundAt(x); line(x, y, x - 3, y - 6); line(x + 3, y, x + 4, y - 8); line(x + 6, y, x + 10, y - 5); }
+  }
+
+  function drawBrick(b) {
+    const v = b.vertices;
+    ctx.beginPath();
+    v.forEach((p, k) => k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.closePath();
+    ctx.fillStyle = C.paper; ctx.fill();
+    ctx.strokeStyle = C.brick; lw(1.5); ctx.stroke();
+  }
+
+  function figure(fx, f, crouch, hand, carry, col) {
+    const b = PH / 2;
+    const hipY = b - (crouch ? 10 : 15), shX = fx + f * (crouch ? 3 : 1), shY = hipY - 12, headY = shY - 5;
+    ctx.strokeStyle = C.ink; lw(1.5);
+    if (crouch) {
+      ctx.beginPath(); ctx.moveTo(fx, hipY); ctx.lineTo(fx + f * 6, hipY - 1); ctx.lineTo(fx + f * 6, b); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(fx, hipY); ctx.lineTo(fx - f * 1, b); ctx.lineTo(fx - f * 7, b); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(fx - 4, b); ctx.lineTo(fx, hipY); ctx.lineTo(fx + 4, b); ctx.stroke();
+    }
+    line(fx, hipY, shX, shY);
+    const el = { x: (shX + hand.x) / 2 - f * 1.5, y: (shY + hand.y) / 2 + 3 };
+    ctx.beginPath(); ctx.moveTo(shX, shY + 1); ctx.lineTo(el.x, el.y); ctx.lineTo(hand.x, hand.y); ctx.stroke();
+    if (carry) {
+      ctx.save(); ctx.translate(hand.x, hand.y - 1);
+      ctx.beginPath(); ctx.moveTo(-f * 5, -2.2); ctx.lineTo(f * 3, -2.2); ctx.arc(f * 3, 0, 2.2, -Math.PI / 2, Math.PI / 2, f < 0); ctx.lineTo(-f * 5, 2.2); ctx.closePath();
+      ctx.fillStyle = C.paper; ctx.fill(); lw(1.2); ctx.stroke(); ctx.restore(); lw(1.5);
+    }
+    ctx.beginPath(); ctx.arc(shX, headY, 3.4, 0, Math.PI * 2); ctx.fillStyle = C.paper; ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(shX, headY - 0.6, 4.2, Math.PI, 0); ctx.closePath(); ctx.fillStyle = col; ctx.fill(); ctx.stroke();
+  }
+
+  function drawWheel(x, y) {
+    ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fillStyle = C.paper; ctx.fill(); lw(1.8); ctx.stroke();
+    lw(1);
+    for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3; line(x, y, x + Math.cos(a) * 10, y + Math.sin(a) * 10); }
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fillStyle = C.ink; ctx.fill();
+  }
+
+  function drawBarrel(len, recoil) {
+    ctx.beginPath(); ctx.rect(-10 - recoil, -3, len + 10, 6); ctx.fillStyle = C.paper; ctx.fill(); lw(1.6); ctx.stroke();
+    ctx.beginPath(); ctx.rect(-4 - recoil, 3, 20, 3); ctx.fill(); lw(1.2); ctx.stroke();
+    ctx.beginPath(); ctx.rect(len - 6 - recoil, -4.5, 6, 9); ctx.fillStyle = C.paper; ctx.fill(); lw(1.6); ctx.stroke();
+  }
+
+  function drawPlayer(p) {
+    const { x, y } = p.body.position, f = p.dir, b = PH / 2;
+    ctx.save(); ctx.translate(x, y);
+    ctx.strokeStyle = C.ink; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    if (p.dead) {
+      lw(1.8); line(-f * 26, b - 1, f * 4, b - 6);
+      ctx.save(); ctx.translate(f * 4, b - 5); ctx.rotate(f > 0 ? 0.35 : Math.PI - 0.35); drawBarrel(BARREL, 0); ctx.restore();
+      drawWheel(-f * 18, b - 11);
+      ctx.save(); ctx.translate(f * 18, b - 3); ctx.scale(1, 0.35); ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fillStyle = C.paper; ctx.fill(); lw(1.6); ctx.stroke(); ctx.restore();
+      ctx.restore();
+      return;
+    }
+    const a = p.angle * Math.PI / 180;
+    const piv = { x: f * 6, y: b - 17 };
+    const theta = Math.atan2(-Math.sin(a), f * Math.cos(a));
+    const recoil = Math.sin(Math.min(1, p.recoil) * Math.PI / 2) * 8 * p.recoil;
+    // trail and spade
+    lw(2); line(piv.x, piv.y + 2, -f * 28, b - 1); lw(1.6); line(-f * 28, b - 1, -f * 31, b + 1);
+    // crew behind the gun
+    const breech = { x: piv.x + Math.cos(theta) * (-8 - recoil), y: piv.y + Math.sin(theta) * (-8 - recoil) };
+    figure(-f * 26, f, false, { x: -f * 20, y: b - 20 }, true, p.color);
+    figure(-f * 10, f, true, { x: breech.x - f * 1, y: Math.max(breech.y, b - 26) }, false, p.color);
+    // shield, barrel, wheel
+    lw(2.2); line(f * 13, b - 30, f * 15, b - 9);
+    ctx.save(); ctx.translate(piv.x, piv.y); ctx.rotate(theta); drawBarrel(BARREL, recoil); ctx.restore();
+    drawWheel(f * 2, b - 11);
+    ctx.restore();
+  }
+
+  function drawTrail(p, alpha) {
+    if (!p.trail || p.trail.length < 2) return;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = p.color;
+    ctx.setLineDash([1.5 / s, 5 / s]); lw(1.6);
+    ctx.beginPath(); p.trail.forEach((q, k) => k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+    ctx.restore();
+    if (p.impact && !(shell && shell.owner === p.i)) {
+      const { x, y } = p.impact, r = 7 / s;
+      ctx.strokeStyle = p.color; lw(2); line(x - r, y - r, x + r, y + r); line(x - r, y + r, x + r, y - r);
+    }
+  }
+
+  function drawEffects() {
+    for (const q of smoke) {
+      ctx.globalAlpha = Math.min(1, q.life / q.max * 1.6) * 0.95;
+      ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, Math.PI * 2);
+      ctx.fillStyle = C.paper; ctx.fill(); ctx.strokeStyle = C.smoke; lw(1.1); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (const q of debris) {
+      ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.rot); ctx.globalAlpha = Math.min(1, q.life * 2);
+      ctx.beginPath(); ctx.rect(-q.w / 2, -q.h / 2, q.w, q.h); ctx.fillStyle = C.paper; ctx.fill(); ctx.strokeStyle = C.brick; lw(1.3); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.strokeStyle = C.flash;
+    for (const q of sparks) { ctx.globalAlpha = Math.min(1, q.life * 3); lw(1.5); line(q.x, q.y, q.x - q.vx * 0.025, q.y - q.vy * 0.025); }
+    for (const q of rings) {
+      ctx.globalAlpha = Math.max(0, q.life / 0.4);
+      ctx.beginPath(); ctx.arc(q.x, q.y, q.r + (q.max - q.r) * Math.min(1, q.t / 0.3), 0, Math.PI * 2);
+      ctx.strokeStyle = C.ink; lw(1.4); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (const q of flashes) {
+      ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.a);
+      ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(26, 0); ctx.lineTo(0, 6); ctx.lineTo(8, 0); ctx.closePath();
+      ctx.fillStyle = C.flash; ctx.fill();
+      ctx.strokeStyle = C.flash; lw(1.5);
+      line(2, -4, 12, -14); line(2, 4, 12, 14);
+      ctx.restore();
+    }
+  }
+
+  function render(dt) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = C.paper; ctx.fillRect(0, 0, cw, ch);
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * gy);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    const x0 = -ox / s, x1 = (cw - ox) / s, skyH = gy / s;
+
+    for (const c of scenery.clouds) {
+      c.x += c.v * dt;
+      if (c.x > x1 + 2 * SCALE) c.x = x0 - c.w - rand(0, 20 * SCALE);
+      drawCloud(c, skyH);
+    }
+    drawRange(scenery.far, C.far);
+    drawRange(scenery.near, C.near);
+    drawGround(x0, x1);
+    drawHill();
+
+    players.forEach(p => drawTrail(p, p.i === turn ? 0.75 : 0.35));
+    bricks.forEach(drawBrick);
+    players.forEach(drawPlayer);
+
+    if (state === 'aim') {
+      const p = players[turn], g = gun(p);
+      ctx.save(); ctx.strokeStyle = p.color; ctx.globalAlpha = 0.55; ctx.setLineDash([4 / s, 4 / s]); lw(1.3);
+      line(g.muzzle.x + g.d.x * 6, g.muzzle.y + g.d.y * 6, g.muzzle.x + g.d.x * 70, g.muzzle.y + g.d.y * 70);
+      ctx.restore();
+    }
+    if (shell) { ctx.beginPath(); ctx.arc(shell.x, shell.y - (shell.contact ? 4 : 0), Math.max(4, 3 / s), 0, Math.PI * 2); ctx.fillStyle = C.ink; ctx.fill(); }
+    drawEffects();
+
+    // screen-space labels
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    for (const p of players) {
+      const top = w2s(p.body.position.x, p.body.bounds.min.y);
+      const active = p.i === turn && state === 'aim';
+      const bob = active ? Math.sin(clock * 5) * 3 : 0;
+      ctx.fillStyle = p.color;
+      ctx.font = `600 12px "IBM Plex Mono", ui-monospace, monospace`;
+      ctx.fillText(`P${p.i + 1}`, top.x, top.y - 16 + bob - (active ? 12 : 0));
+      if (active) {
+        ctx.beginPath(); ctx.moveTo(top.x - 7, top.y - 22 + bob); ctx.lineTo(top.x + 7, top.y - 22 + bob); ctx.lineTo(top.x, top.y - 13 + bob); ctx.closePath(); ctx.fill();
+      }
+    }
+    if (shell) {
+      const sp = w2s(shell.x, shell.y);
+      if (sp.y < 6) { // round is above the top of the screen
+        const x = clamp(sp.x, 14, cw - 14);
+        ctx.fillStyle = C.ink;
+        ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x - 6, 14); ctx.lineTo(x + 6, 14); ctx.closePath(); ctx.fill();
+        ctx.textBaseline = 'top'; ctx.font = `500 11px "IBM Plex Mono", ui-monospace, monospace`;
+        ctx.fillText(`${(-shell.y / SCALE).toFixed(0)} m`, x, 17);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- HUD
+  function updateHUD() {
+    players.forEach((p, i) => {
+      const c = cards[i];
+      c.classList.toggle('active', state === 'aim' && turn === i);
+      c.classList.toggle('idle', turn !== i && state !== 'over' && state !== 'boom');
+      c.querySelector('.ang').textContent = p.angle.toFixed(1) + '°';
+      c.querySelector('.mils').textContent = `${Math.round(p.angle * 6400 / 360)} mils`;
+      c.querySelector('.chg').textContent = p.charge.toFixed(1);
+      c.querySelector('.meter i').style.width = (p.charge / 50 * 100) + '%';
+      c.querySelector('.mv').textContent = `MV ${(p.charge * MV_PER_CHARGE).toFixed(1)} m/s`;
+      c.querySelector('.spot-t').textContent = p.spot;
+      c.querySelector('.score').textContent = `${scores[i]} ${scores[i] === 1 ? 'WIN' : 'WINS'}`;
+    });
+    const who = state === 'boom' || state === 'over' ? winner : turn;
+    banner.style.setProperty('--tc', C.p[who]);
+    banner.querySelector('.who').textContent = state === 'boom' || state === 'over' ? `Player ${who + 1} wins` : `Player ${turn + 1}`;
+    banner.querySelector('.what').textContent = {
+      aim: 'Set elevation and charge, then fire',
+      fly: 'Round in flight',
+      resolve: 'Spotting the fall of shot',
+      boom: 'Direct hit',
+      over: 'Press R for a new match',
+    }[state];
+  }
+
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    cw = window.innerWidth; ch = window.innerHeight;
+    canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+    const topR = topEl.getBoundingClientRect().bottom + 10;
+    const botR = hintsEl.offsetHeight + 34;
+    const needH = 17 * SCALE; // tallest tower plus crew and label
+    s = Math.min(cw / W, Math.max(60, ch - topR - botR) / needH);
+    ox = (cw - W * s) / 2;
+    gy = ch - botR;
+  }
+
+  // ---------------------------------------------------------------- input
+  addEventListener('keydown', e => {
+    const fine = e.shiftKey ? 0.1 : 1;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Enter'].includes(e.key)) e.preventDefault();
+    switch (e.key) {
+      case 'ArrowUp': case 'w': case 'W': adjust('angle', fine); break;
+      case 'ArrowDown': case 's': case 'S': adjust('angle', -fine); break;
+      case 'ArrowRight': case 'd': case 'D': adjust('charge', fine); break;
+      case 'ArrowLeft': case 'a': case 'A': adjust('charge', -fine); break;
+      case ' ': case 'Enter': if (!e.repeat) fire(); break;
+      case 'r': case 'R': if (!e.repeat) newMatch(); break;
+      case 'm': case 'M': toggleMute(); break;
+    }
+  });
+
+  function toggleMute() {
+    muted = !muted;
+    document.getElementById('muteLabel').textContent = muted ? 'Sound off' : 'Sound on';
+  }
+
+  cards.forEach((c, i) => {
+    c.querySelectorAll('.step').forEach(btn => {
+      let hold = null;
+      const act = ev => { if (turn === i) adjust(btn.dataset.k, Number(btn.dataset.d) * (ev.shiftKey ? 0.1 : 1)); };
+      btn.addEventListener('pointerdown', ev => {
+        ev.preventDefault(); act(ev);
+        let delay = 380;
+        const rep = () => { act(ev); delay = Math.max(40, delay * 0.8); hold = setTimeout(rep, delay); };
+        hold = setTimeout(rep, delay);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => btn.addEventListener(t, () => clearTimeout(hold)));
+    });
+    c.querySelector('.fire').addEventListener('click', () => { if (turn === i) fire(); });
+  });
+  document.getElementById('hintFire').addEventListener('click', fire);
+  document.getElementById('hintNew').addEventListener('click', newMatch);
+  document.getElementById('hintMute').addEventListener('click', toggleMute);
+  document.getElementById('again').addEventListener('click', newMatch);
+  addEventListener('resize', resize);
+
+  // ---------------------------------------------------------------- loop
+  let last = performance.now(), acc = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now; acc += dt; clock += dt;
+    while (acc >= STEP) { step(); acc -= STEP; }
+    updateParticles(dt);
+    render(dt);
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  newMatch();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
+  requestAnimationFrame(frame);
+})();
+</script>
